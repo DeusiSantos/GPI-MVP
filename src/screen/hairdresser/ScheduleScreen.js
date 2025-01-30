@@ -1,5 +1,4 @@
-// src/screens/hairdresser/ScheduleScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -17,33 +16,17 @@ import {
   Divider,
   FAB,
   Switch,
+  ActivityIndicator,
 } from 'react-native-paper';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import api from '../../services/api';
 
 export default function ScheduleScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showModal, setShowModal] = useState(false);
-
-  const appointments = [
-    {
-      id: 1,
-      clientName: 'Maria Silva',
-      service: 'Corte Feminino',
-      time: '09:00',
-      duration: 60,
-      price: '8000kzs',
-      status: 'confirmed',
-    },
-    {
-      id: 2,
-      clientName: 'Ana Oliveira',
-      service: 'Tranças',
-      time: '11:00',
-      duration: 180,
-      price: '15000 kzs',
-      status: 'pending',
-    },
-  ];
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const workingHours = [
     { day: 'Segunda', start: '09:00', end: '18:00', active: true },
@@ -55,7 +38,6 @@ export default function ScheduleScreen() {
     { day: 'Domingo', start: '09:00', end: '18:00', active: false },
   ];
 
-  // Gera últimos 7 dias e próximos 7 dias
   const generateDates = () => {
     const dates = [];
     for (let i = -7; i <= 7; i++) {
@@ -66,9 +48,7 @@ export default function ScheduleScreen() {
     return dates;
   };
 
-  const dates = generateDates();
-
-  const formatDate = (date) => {
+    const formatDate = (date) => {
     const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     return {
       day: date.getDate(),
@@ -96,6 +76,54 @@ export default function ScheduleScreen() {
     );
   };
 
+  useEffect(() => {
+    loadAppointments();
+  }, []);
+
+  const loadAppointments = async () => {
+    try {
+      setLoading(true);
+      const userData = await AsyncStorage.getItem('userData');
+      const user = JSON.parse(userData);
+
+      if (!user) {
+        console.error('Usuário não encontrado');
+        return;
+      }
+
+      const response = await api.get('/appointments');
+      const allAppointments = response.data;
+
+      // Filtrar apenas os agendamentos pendentes do profissional logado
+      const hairdresserAppointments = allAppointments
+        .filter(appointment => 
+          appointment.hairdresser_id === user.id && 
+          appointment.status === 'pending'
+        )
+        .map(appointment => ({
+          ...appointment,
+          time: new Date(appointment.appointment_time).toLocaleTimeString().slice(0, 5),
+        }));
+
+      setAppointments(hairdresserAppointments);
+    } catch (error) {
+      console.error('Erro ao carregar agendamentos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateStatus = async (appointmentId, status) => {
+    try {
+      await api.patch(`/appointments/${appointmentId}/status`, { status });
+      alert(`Agendamento ${status === 'confirmed' ? 'confirmado' : 'cancelado'} com sucesso`);
+      loadAppointments();
+    } catch (error) {
+      console.error('Erro ao atualizar status:', error);
+      alert('Erro ao atualizar status do agendamento');
+    }
+  };
+
   const renderAppointment = (appointment) => (
     <Card key={appointment.id} style={styles.appointmentCard}>
       <Card.Content>
@@ -104,56 +132,38 @@ export default function ScheduleScreen() {
             <Icon name="clock-outline" size={20} color="#666" />
             <Text style={styles.timeText}>{appointment.time}</Text>
             <Text style={styles.durationText}>
-              ({appointment.duration} min)
+              ({appointment.duration || 60} min)
             </Text>
           </View>
           <Chip 
-            style={[
-              styles.statusChip,
-              { 
-                backgroundColor: appointment.status === 'confirmed' 
-                  ? '#4CAF5020' 
-                  : '#FFC10720' 
-              }
-            ]}
-            textStyle={{ 
-              color: appointment.status === 'confirmed' 
-                ? '#4CAF50' 
-                : '#FFC107'
-            }}
+            style={[styles.statusChip, { backgroundColor: '#FFC10720' }]}
+            textStyle={{ color: '#FFC107' }}
           >
-            {appointment.status === 'confirmed' ? 'Confirmado' : 'Pendente'}
+            Pendente
           </Chip>
         </View>
 
         <View style={styles.clientInfo}>
-          <Text style={styles.clientName}>{appointment.clientName}</Text>
-          <Text style={styles.serviceText}>{appointment.service}</Text>
-          <Text style={styles.priceText}>{appointment.price}</Text>
+          <Text style={styles.clientName}>{appointment.client_name}</Text>
+          <Text style={styles.serviceText}>{appointment.service_name}</Text>
+          <Text style={styles.priceText}>kzs {appointment.total_price}</Text>
         </View>
 
         <View style={styles.actionButtons}>
           <Button 
-            mode="contained-tonal" 
-            icon="phone"
-            onPress={() => {}}
-            style={styles.actionButton}
-          >
-            Ligar
-          </Button>
-          <Button 
             mode="contained-tonal"
-            icon="chat"
-            onPress={() => {}}
-            style={styles.actionButton}
+            icon="close"
+            onPress={() => handleUpdateStatus(appointment.id, 'cancelled')}
+            style={[styles.actionButton, { backgroundColor: '#ffebee' }]}
+            textColor="#d32f2f"
           >
-            Chat
+            Cancelar
           </Button>
           <Button 
             mode="contained"
             icon="check"
-            onPress={() => {}}
-            style={styles.actionButton}
+            onPress={() => handleUpdateStatus(appointment.id, 'confirmed')}
+            style={[styles.actionButton, { flex: 2 }]}
           >
             Confirmar
           </Button>
@@ -161,6 +171,14 @@ export default function ScheduleScreen() {
       </Card.Content>
     </Card>
   );
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color="#6750A4" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -170,15 +188,18 @@ export default function ScheduleScreen() {
           showsHorizontalScrollIndicator={false}
           style={styles.dateScroll}
         >
-          {dates.map(renderDateButton)}
+          {generateDates().map(renderDateButton)}
         </ScrollView>
       </Surface>
 
       <ScrollView style={styles.content}>
-        {/* Time Blocks */}
-        <View style={styles.timeBlocks}>
-          {appointments.map(renderAppointment)}
-        </View>
+        {appointments.length > 0 ? (
+          appointments.map(renderAppointment)
+        ) : (
+          <Text style={styles.noAppointments}>
+            Nenhum agendamento pendente
+          </Text>
+        )}
       </ScrollView>
 
       <FAB
@@ -232,6 +253,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   calendarContainer: {
     backgroundColor: 'white',
@@ -351,5 +376,11 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     marginTop: 20,
+  },
+  noAppointments: {
+    textAlign: 'center',
+    color: '#666',
+    marginTop: 32,
+    fontSize: 16,
   },
 });

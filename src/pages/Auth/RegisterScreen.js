@@ -10,6 +10,7 @@ import {
   Image,
   Dimensions,
 } from 'react-native';
+import { authService } from '../../services/api';
 import { TextInput, Button, Text, Surface, Switch } from 'react-native-paper';
 
 const { width } = Dimensions.get('window');
@@ -28,8 +29,48 @@ export default function RegisterScreen({ navigation }) {
 
   const handleRegister = async () => {
     setLoading(true);
-    // TODO: Implementar lógica de registro
-    setTimeout(() => setLoading(false), 2000);
+    try {
+      // Validações
+      if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
+        alert('Por favor, preencha todos os campos');
+        return;
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        alert('As senhas não correspondem');
+        return;
+      }
+
+      // Preparar dados
+      const userData = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        phone: formData.phone || '',
+        role: formData.isHairdresser ? 'hairdresser' : 'client'
+      };
+
+      console.log('Tentando registrar com dados:', userData);
+
+      // Fazer registro
+      const response = await authService.register(userData);
+      
+      console.log('Resposta do cadastro:', response);
+
+      // Verificar se o registro foi realmente bem sucedido
+      if (response && response.user) {
+        alert('Cadastro realizado com sucesso!');
+        navigation.navigate('Login');
+      } else {
+        throw new Error('Resposta inválida do servidor');
+      }
+      
+    } catch (error) {
+      console.error('Erro detalhado:', error);
+      alert(error.message || 'Erro ao fazer cadastro. Verifique os dados e tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateFormData = (key, value) => {

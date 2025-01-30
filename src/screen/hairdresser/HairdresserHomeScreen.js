@@ -42,7 +42,7 @@ export default function HairdresserHomeScreen({ navigation }) {
       id: 2,
       clientName: 'Carolina Silva',
       service: 'Tranças',
-      time: '16:00',
+      time: '16:00',    
       status: 'confirmed',
       price: '15000kzs',
     },

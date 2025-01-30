@@ -10,6 +10,7 @@ import {
     Image,
     Dimensions,
 } from 'react-native';
+import { authService } from '../../services/api';
 import { TextInput, Button, Text, Surface } from 'react-native-paper';
 
 const { width } = Dimensions.get('window');
@@ -37,38 +38,33 @@ export default function LoginScreen({ navigation }) {
     const [secureTextEntry, setSecureTextEntry] = useState(true);
 
     // No LoginScreen.js, atualize a função handleLogin:
-const handleLogin = async () => {
-    setLoading(true);
-    try {
-      if (!email || !password) {
-        alert('Por favor, preencha todos os campos');
-        return;
-      }
-      
-      // Simulando verificação de login
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Verificar credenciais
-      const clientUser = TEST_USERS.client;
-      const hairdresserUser = TEST_USERS.hairdresser;
-  
-      if (email === clientUser.email && password === clientUser.password) {
-        // Login como cliente
-        navigation.replace('ClientTabs');
-      } else if (email === hairdresserUser.email && password === hairdresserUser.password) {
-        // Login como cabeleireiro
-        navigation.replace('HairdresserTabs');
-      } else {
-        alert('Email ou senha inválidos!\n\nUsuários de teste:\n\nCliente:\nEmail: cliente@teste.com\nSenha: 123456\n\nCabeleireiro:\nEmail: cabeleireiro@teste.com\nSenha: 123456');
-      }
-      
-    } catch (error) {
-      alert('Erro ao fazer login');
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const handleLogin = async () => {
+        setLoading(true);
+        try {
+          if (!email || !password) {
+            alert('Por favor, preencha todos os campos');
+            return;
+          }
+    
+          const response = await authService.login(email, password);
+          
+          // Guardar o token
+          // AsyncStorage.setItem('userToken', response.token);
+          
+          // Navegar baseado no role do usuário
+          if (response.user.role === 'client') {
+            navigation.replace('ClientTabs');
+          } else {
+            navigation.replace('HairdresserTabs');
+          }
+          
+        } catch (error) {
+          alert(error.message || 'Erro ao fazer login');
+          console.error(error);
+        } finally {
+          setLoading(false);
+        }
+      };
 
     // Função auxiliar para pré-preencher credenciais (desenvolvimento)
     const fillTestCredentials = (userType) => {
@@ -152,7 +148,7 @@ const handleLogin = async () => {
                     </Button>
 
                     {/* Botões de teste - remover em produção */}
-                    <View style={styles.testButtons}>
+                    {/* <View style={styles.testButtons}>
                         <Button
                             mode="outlined"
                             onPress={() => fillTestCredentials('client')}
@@ -167,7 +163,7 @@ const handleLogin = async () => {
                         >
                             Testar como Cabeleireiro
                         </Button>
-                    </View>
+                    </View> */}
 
                     <View style={styles.footer}>
                         <Text variant="bodyMedium">Ainda não tem conta? </Text>

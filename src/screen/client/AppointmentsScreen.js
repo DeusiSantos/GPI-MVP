@@ -1,11 +1,9 @@
-// src/screens/client/AppointmentsScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import {
   Text,
@@ -15,53 +13,54 @@ import {
   Chip,
   Divider,
   Surface,
+  ActivityIndicator,
 } from 'react-native-paper';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-
-const { width } = Dimensions.get('window');
+import api from '../../services/api';
 
 export default function AppointmentsScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('upcoming');
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const upcomingAppointments = [
-    {
-      id: 1,
-      hairdresser: 'Ana Silva',
-      service: 'Corte',
-      date: '28 Jan 2024',
-      time: '15:30',
-      status: 'confirmed',
-      price: 'R$ 80,00',
-      location: 'Rua das Flores, 123',
-      avatar: require('../../assets/logo.png'),
-    },
-    {
-      id: 2,
-      hairdresser: 'João Santos',
-      service: 'Tranças',
-      date: '30 Jan 2024',
-      time: '10:00',
-      status: 'pending',
-      price: 'R$ 150,00',
-      location: 'Av. Principal, 456',
-      avatar: require('../../assets/logo.png'),
-    },
-  ];
+  useEffect(() => {
+    loadAppointments();
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadAppointments();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
-  const pastAppointments = [
-    {
-      id: 3,
-      hairdresser: 'Maria Oliveira',
-      service: 'Corte e Química',
-      date: '20 Jan 2024',
-      time: '14:00',
-      status: 'completed',
-      price: 'R$ 200,00',
-      rating: 5,
-      avatar: require('../../assets/logo.png'),
-    },
-    // Adicione mais agendamentos passados aqui
-  ];
+  const loadAppointments = async () => {
+    try {
+      setLoading(true);
+      const userData = await AsyncStorage.getItem('userData');
+      const user = JSON.parse(userData);
+
+      if (!user) {
+        console.error('Usuário não encontrado');
+        return;
+      }
+
+      const response = await api.get(`/appointments`);
+      const allAppointments = response.data;
+
+      const userAppointments = allAppointments
+        .filter(appointment => appointment.client_id === user.id)
+        .map(appointment => ({
+          ...appointment,
+          date: new Date(appointment.appointment_date).toLocaleDateString(),
+          time: new Date(`2000-01-01T${appointment.appointment_time}`).toLocaleTimeString().slice(0, 5),
+        }));
+
+      setAppointments(userAppointments);
+    } catch (error) {
+      console.error('Erro ao carregar agendamentos:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -77,7 +76,6 @@ export default function AppointmentsScreen({ navigation }) {
         return '#666';
     }
   };
-
   const getStatusText = (status) => {
     switch (status) {
       case 'confirmed':
@@ -93,18 +91,43 @@ export default function AppointmentsScreen({ navigation }) {
     }
   };
 
+  const handleCancelAppointment = async (appointmentId) => {
+    try {
+      await api.patch(`/appointments/${appointmentId}/status`, { status: 'cancelled' });
+      alert('Agendamento cancelado com sucesso');
+      loadAppointments();
+    } catch (error) {
+      console.error('Erro ao cancelar agendamento:', error);
+      alert('Erro ao cancelar agendamento. Tente novamente.');
+    }
+  };
+
+  // Mostrar apenas agendamentos pendentes em "Próximos"
+  const getUpcomingAppointments = () => {
+    return appointments
+      .filter(appointment => appointment.status === 'pending')
+      .sort((a, b) => new Date(a.appointment_date) - new Date(b.appointment_date));
+  };
+
+  // Mostrar todos os agendamentos não pendentes em "Histórico"
+  const getPastAppointments = () => {
+    return appointments
+      .filter(appointment => appointment.status !== 'pending')
+      .sort((a, b) => new Date(b.appointment_date) - new Date(a.appointment_date));
+  };
+
   const renderUpcomingAppointment = (appointment) => (
     <Card key={appointment.id} style={styles.appointmentCard}>
       <Card.Content>
         <View style={styles.cardHeader}>
           <View style={styles.hairdresserInfo}>
-            <Avatar.Image source={appointment.avatar} size={50} />
+            <Avatar.Image source={require('../../assets/logo.png')} size={50} />
             <View style={styles.hairdresserDetails}>
               <Text variant="titleMedium" style={styles.hairdresserName}>
-                {appointment.hairdresser}
+                {appointment.hairdresser_name}
               </Text>
               <Text variant="bodyMedium" style={styles.serviceText}>
-                {appointment.service}
+                {appointment.service_name}
               </Text>
             </View>
           </View>
@@ -131,23 +154,19 @@ export default function AppointmentsScreen({ navigation }) {
             <Text style={styles.detailText}>{appointment.time}</Text>
           </View>
           <View style={styles.detailRow}>
-            <Icon name="map-marker" size={20} color="#666" />
-            <Text style={styles.detailText}>{appointment.location}</Text>
-          </View>
-          <View style={styles.detailRow}>
             <Icon name="cash" size={20} color="#666" />
-            <Text style={styles.detailText}>{appointment.price}</Text>
+            <Text style={styles.detailText}>kzs {appointment.total_price}</Text>
           </View>
         </View>
 
         <View style={styles.cardActions}>
           <Button
             mode="contained-tonal"
-            onPress={() => {}}
-            style={styles.actionButton}
-            icon="chat"
+            onPress={() => handleCancelAppointment(appointment.id)}
+            style={[styles.actionButton, { backgroundColor: '#ffebee' }]}
+            textColor="#d32f2f"
           >
-            Chat
+            Cancelar
           </Button>
           <Button
             mode="contained"
@@ -166,26 +185,25 @@ export default function AppointmentsScreen({ navigation }) {
       <Card.Content>
         <View style={styles.cardHeader}>
           <View style={styles.hairdresserInfo}>
-            <Avatar.Image source={appointment.avatar} size={50} />
+            <Avatar.Image source={require('../../assets/logo.png')} size={50} />
             <View style={styles.hairdresserDetails}>
               <Text variant="titleMedium" style={styles.hairdresserName}>
-                {appointment.hairdresser}
+                {appointment.hairdresser_name}
               </Text>
               <Text variant="bodyMedium" style={styles.serviceText}>
-                {appointment.service}
+                {appointment.service_name}
               </Text>
             </View>
           </View>
-          <View style={styles.ratingContainer}>
-            {[...Array(5)].map((_, index) => (
-              <Icon
-                key={index}
-                name="star"
-                size={16}
-                color={index < appointment.rating ? '#FFD700' : '#e0e0e0'}
-              />
-            ))}
-          </View>
+          <Chip
+            style={[
+              styles.statusChip,
+              { backgroundColor: getStatusColor(appointment.status) + '20' },
+            ]}
+            textStyle={{ color: getStatusColor(appointment.status) }}
+          >
+            {getStatusText(appointment.status)}
+          </Chip>
         </View>
 
         <Divider style={styles.divider} />
@@ -201,64 +219,64 @@ export default function AppointmentsScreen({ navigation }) {
           </View>
           <View style={styles.detailRow}>
             <Icon name="cash" size={20} color="#666" />
-            <Text style={styles.detailText}>{appointment.price}</Text>
+            <Text style={styles.detailText}>kzs {appointment.total_price}</Text>
           </View>
         </View>
 
+        {/* Removido o botão "Agendar Novamente" do histórico */}
         <Button
-          mode="contained-tonal"
+          mode="contained"
           onPress={() => {}}
-          style={styles.rebookButton}
+          style={styles.actionButton}
         >
-          Agendar Novamente
+          Ver Detalhes
         </Button>
       </Card.Content>
     </Card>
   );
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color="#6750A4" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {/* Tabs */}
       <Surface style={styles.tabsContainer}>
         <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'upcoming' && styles.activeTab,
-          ]}
+          style={[styles.tab, activeTab === 'upcoming' && styles.activeTab]}
           onPress={() => setActiveTab('upcoming')}
         >
           <Text
-            style={[
-              styles.tabText,
-              activeTab === 'upcoming' && styles.activeTabText,
-            ]}
+            style={[styles.tabText, activeTab === 'upcoming' && styles.activeTabText]}
           >
             Próximos
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'past' && styles.activeTab,
-          ]}
+          style={[styles.tab, activeTab === 'past' && styles.activeTab]}
           onPress={() => setActiveTab('past')}
         >
           <Text
-            style={[
-              styles.tabText,
-              activeTab === 'past' && styles.activeTabText,
-            ]}
+            style={[styles.tabText, activeTab === 'past' && styles.activeTabText]}
           >
             Histórico
           </Text>
         </TouchableOpacity>
       </Surface>
 
-      {/* Appointments List */}
       <ScrollView style={styles.scrollView}>
         {activeTab === 'upcoming'
-          ? upcomingAppointments.map(renderUpcomingAppointment)
-          : pastAppointments.map(renderPastAppointment)}
+          ? getUpcomingAppointments().map(renderUpcomingAppointment)
+          : getPastAppointments().map(renderPastAppointment)}
+        {appointments.length === 0 && (
+          <Text style={styles.noAppointments}>
+            Nenhum agendamento encontrado
+          </Text>
+        )}
       </ScrollView>
     </View>
   );
@@ -268,6 +286,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -344,12 +366,10 @@ const styles = StyleSheet.create({
   actionButton: {
     borderRadius: 8,
   },
-  ratingContainer: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  rebookButton: {
-    marginTop: 16,
-    borderRadius: 8,
+  noAppointments: {
+    textAlign: 'center',
+    color: '#666',
+    marginTop: 32,
+    fontSize: 16,
   },
 });
